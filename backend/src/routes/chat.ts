@@ -1,8 +1,9 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
 import { postChat } from '../controllers/chat.controller';
 import { generateReply } from '../services/ai.service';
+import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
+import { sessionBelongsToUser } from '../services/chat.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -21,6 +22,12 @@ router.post('/:sessionId/message', async (req: AuthenticatedRequest, res: Respon
 		const { content } = req.body;
 		if (!content?.trim()) {
 			res.status(400).json({ error: 'Message content required' });
+			return;
+		}
+
+		const allowed = await sessionBelongsToUser(req.params.sessionId, req.userId);
+		if (!allowed) {
+			res.status(403).json({ error: 'Forbidden session access' });
 			return;
 		}
 

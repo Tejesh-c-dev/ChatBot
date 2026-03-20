@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
-import { users } from '../models/types';
+import { prisma } from '../services/prisma.service';
 
 const router = Router();
 
@@ -16,25 +15,29 @@ router.post('/register', async (req: Request, res: Response) => {
 			return;
 		}
 
-		// Check if email exists
-		const existingUser = Array.from(users.values()).find(
-			(u) => u.email === email
-		);
+		const normalizedEmail = String(email).trim().toLowerCase();
+		const existingUser = await prisma.user.findUnique({
+			where: { email: normalizedEmail },
+			select: { id: true },
+		});
 		if (existingUser) {
 			res.status(409).json({ error: 'Email already registered' });
 			return;
 		}
 
 		const passwordHash = await bcrypt.hash(password, 10);
-		const user = {
-			id: uuidv4(),
-			username,
-			email,
-			passwordHash,
-			createdAt: new Date(),
-		};
-
-		users.set(user.id, user);
+		const user = await prisma.user.create({
+			data: {
+				username: String(username).trim(),
+				email: normalizedEmail,
+				passwordHash,
+			},
+			select: {
+				id: true,
+				username: true,
+				email: true,
+			},
+		});
 
 		const token = jwt.sign(
 			{ userId: user.id },
@@ -44,7 +47,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
 		res.status(201).json({
 			token,
-			user: { id: user.id, username: user.username, email: user.email },
+			user,
 		});
 	} catch (_err) {
 		res.status(500).json({ error: 'Server error' });
@@ -61,7 +64,16 @@ router.post('/login', async (req: Request, res: Response) => {
 			return;
 		}
 
-		const user = Array.from(users.values()).find((u) => u.email === email);
+		const normalizedEmail = String(email).trim().toLowerCase();
+		const user = await prisma.user.findUnique({
+			where: { email: normalizedEmail },
+			select: {
+				id: true,
+				username: true,
+				email: true,
+				passwordHash: true,
+			},
+		});
 		if (!user) {
 			res.status(401).json({ error: 'Invalid credentials' });
 			return;

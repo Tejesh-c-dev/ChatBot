@@ -5,11 +5,12 @@ import { ChatSession } from '../types';
 export default function Sidebar() {
   const {
     user, sessions, activeSession, createSession,
-    selectSession, deleteSession, renameSession, logout,
+    selectSession, deleteSession, renameSession, logout, loadMoreSessions, sessionsHasMore,
   } = useStore();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [search, setSearch] = useState('');
 
   const startEdit = (s: ChatSession, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -22,229 +23,111 @@ export default function Sidebar() {
     setEditingId(null);
   };
 
-  const itemStyle = (active: boolean): React.CSSProperties => ({
-    display: 'flex',
-    alignItems: 'center',
-    padding: '8px 10px',
-    borderRadius: 8,
-    cursor: 'pointer',
-    background: active ? 'var(--surface3)' : 'transparent',
-    border: active ? '1px solid var(--border)' : '1px solid transparent',
-    marginBottom: 2,
-    gap: 8,
-    transition: 'background 0.1s',
+  const filteredSessions = sessions.filter((session) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      session.title.toLowerCase().includes(q) ||
+      (session.lastMessage || '').toLowerCase().includes(q)
+    );
   });
 
-  const s: Record<string, React.CSSProperties> = {
-    sidebar: {
-      width: 260,
-      minWidth: 260,
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--surface)',
-      borderRight: '1px solid var(--border)',
-      overflow: 'hidden',
-    },
-    header: {
-      padding: '18px 16px 12px',
-      borderBottom: '1px solid var(--border)',
-    },
-    logo: {
-      fontFamily: 'var(--font-mono)',
-      fontSize: 16,
-      color: 'var(--accent)',
-      fontWeight: 700,
-      letterSpacing: '-0.3px',
-    },
-    userInfo: {
-      fontSize: 12,
-      color: 'var(--text3)',
-      marginTop: 2,
-    },
-    newBtn: {
-      margin: '10px 12px',
-      width: 'calc(100% - 24px)',
-      padding: '9px 12px',
-      background: 'var(--accent)',
-      color: 'white',
-      border: 'none',
-      borderRadius: 8,
-      fontSize: 13,
-      fontFamily: 'var(--font-body)',
-      fontWeight: 600,
-      cursor: 'pointer',
-      letterSpacing: '0.02em',
-      transition: 'opacity 0.15s',
-    },
-    list: {
-      flex: 1,
-      overflowY: 'auto' as const,
-      padding: '4px 8px',
-    },
-    sectionLabel: {
-      fontSize: 10,
-      fontWeight: 700,
-      color: 'var(--text3)',
-      textTransform: 'uppercase' as const,
-      letterSpacing: '0.1em',
-      padding: '8px 8px 4px',
-    },
-    itemContent: {
-      flex: 1,
-      overflow: 'hidden',
-    },
-    itemTitle: {
-      fontSize: 13,
-      fontWeight: 500,
-      color: 'var(--text)',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap' as const,
-    },
-    itemMeta: {
-      fontSize: 11,
-      color: 'var(--text3)',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap' as const,
-    },
-    actions: {
-      display: 'flex',
-      gap: 4,
-      opacity: 0,
-    },
-    iconBtn: {
-      background: 'none',
-      border: 'none',
-      color: 'var(--text3)',
-      cursor: 'pointer',
-      fontSize: 12,
-      padding: '2px 4px',
-      borderRadius: 4,
-    },
-    editInput: {
-      flex: 1,
-      background: 'var(--surface2)',
-      border: '1px solid var(--accent)',
-      borderRadius: 4,
-      color: 'var(--text)',
-      fontSize: 13,
-      padding: '2px 6px',
-      fontFamily: 'var(--font-body)',
-      outline: 'none',
-    },
-    footer: {
-      padding: '12px 16px',
-      borderTop: '1px solid var(--border)',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    footerText: {
-      fontSize: 12,
-      color: 'var(--text3)',
-    },
-    logoutBtn: {
-      background: 'none',
-      border: '1px solid var(--border)',
-      color: 'var(--text2)',
-      borderRadius: 6,
-      padding: '4px 10px',
-      fontSize: 12,
-      cursor: 'pointer',
-      fontFamily: 'var(--font-body)',
-    },
-  };
+  const initials = (user?.username || 'U').slice(0, 2).toUpperCase();
 
   return (
-    <div style={s.sidebar}>
-      <div style={s.header}>
-        <div style={s.logo}>NexusChat</div>
-        <div style={s.userInfo}>@{user?.username}</div>
+    <aside className="app-sidebar">
+      <div className="sidebar-header">
+        <div className="brand">
+          <div className="brand-main">
+            <div className="brand-icon">N</div>
+            <span className="brand-name">NexusChat</span>
+          </div>
+          <span className="user-handle">@{user?.username}</span>
+        </div>
+        <button className="new-chat-btn" onClick={() => createSession()}>
+          + New chat
+        </button>
       </div>
 
-      <button style={s.newBtn} onClick={() => createSession()}>
-        + New Chat
-      </button>
+      <div className="sidebar-search">
+        <input
+          className="search-input"
+          placeholder="Search chats..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
 
-      <div style={s.list}>
-        {sessions.length === 0 ? (
-          <div style={{ padding: '20px 8px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-            No chats yet. Start one!
-          </div>
+      <div className="section-label">Recent</div>
+
+      <div className="chat-list">
+        {filteredSessions.length === 0 ? (
+          <div className="empty-sub">No chats found.</div>
         ) : (
-          <>
-            <div style={s.sectionLabel}>Recent</div>
-            {sessions.map((session) => (
+          filteredSessions.map((session) => {
+            const isActive = activeSession?.id === session.id;
+            return (
               <div
                 key={session.id}
-                style={itemStyle(activeSession?.id === session.id)}
+                className={`chat-item ${isActive ? 'active' : ''}`}
                 onClick={() => selectSession(session.id)}
-                onMouseEnter={(e) => {
-                  const el = e.currentTarget.querySelector('.actions') as HTMLElement;
-                  if (el) el.style.opacity = '1';
-                }}
-                onMouseLeave={(e) => {
-                  const el = e.currentTarget.querySelector('.actions') as HTMLElement;
-                  if (el) el.style.opacity = '0';
-                }}
               >
-                <span style={{ fontSize: 14 }}>💬</span>
-                <div style={s.itemContent}>
+                <div className={`chat-dot ${isActive ? 'active' : ''}`} />
+
+                <div className="chat-info">
                   {editingId === session.id ? (
                     <input
-                      style={s.editInput}
+                      className="search-input"
                       value={editTitle}
                       autoFocus
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') submitEdit(session.id);
-                        if (e.key === 'Escape') setEditingId(null);
+                      onChange={(event) => setEditTitle(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') submitEdit(session.id);
+                        if (event.key === 'Escape') setEditingId(null);
                       }}
                       onBlur={() => submitEdit(session.id)}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
                     />
                   ) : (
                     <>
-                      <div style={s.itemTitle}>{session.title}</div>
-                      {session.lastMessage && (
-                        <div style={s.itemMeta}>{session.lastMessage}</div>
-                      )}
+                      <div className="chat-title">{session.title}</div>
+                      {session.lastMessage && <div className="chat-preview">{session.lastMessage}</div>}
                     </>
                   )}
                 </div>
+
                 {editingId !== session.id && (
-                  <div className="actions" style={s.actions}>
-                    <button
-                      style={s.iconBtn}
-                      title="Rename"
-                      onClick={(e) => startEdit(session, e)}
-                    >
-                      ✏️
+                  <div className="chat-actions" onClick={(event) => event.stopPropagation()}>
+                    <button className="mini-btn" title="Rename" onClick={(event) => startEdit(session, event)}>
+                      R
                     </button>
-                    <button
-                      style={s.iconBtn}
-                      title="Delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteSession(session.id);
-                      }}
-                    >
-                      🗑️
+                    <button className="mini-btn" title="Delete" onClick={() => deleteSession(session.id)}>
+                      D
                     </button>
                   </div>
                 )}
               </div>
-            ))}
-          </>
+            );
+          })
+        )}
+
+        {sessionsHasMore && (
+          <button className="load-more-btn" onClick={loadMoreSessions}>
+            Load older sessions
+          </button>
         )}
       </div>
 
-      <div style={s.footer}>
-        <span style={s.footerText}>{sessions.length} chat{sessions.length !== 1 ? 's' : ''}</span>
-        <button style={s.logoutBtn} onClick={logout}>Sign out</button>
+      <div className="sidebar-footer">
+        <div className="user-row">
+          <div className="avatar">{initials}</div>
+          <span className="user-name">{user?.username}</span>
+          <button className="signout-btn" onClick={logout}>Sign out</button>
+        </div>
+        <div className="chat-count">
+          {sessions.length} chat{sessions.length !== 1 ? 's' : ''}
+        </div>
       </div>
-    </div>
+    </aside>
   );
 }

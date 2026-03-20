@@ -1,4 +1,7 @@
-import { Message } from '../models/types';
+type Message = {
+	role: 'user' | 'assistant' | 'system';
+	content: string;
+};
 
 const FALLBACK_RESPONSE =
   'I am unable to reach OpenRouter right now. Please check the backend OPENROUTER_API_KEY and try again.';

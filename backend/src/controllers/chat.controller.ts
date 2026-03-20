@@ -1,53 +1,39 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { createSession } from '../store/chatStore';
+import { createSession, sessionBelongsToUser } from '../services/chat.service';
 import { generateReply } from '../services/ai.service';
 
 type ChatBody = {
+  userId?: string;
   sessionId?: string;
   message?: string;
 };
-
-const userSessions = new Map<string, Set<string>>();
-
-function attachSessionToUser(userId: string, sessionId: string): void {
-  const sessions = userSessions.get(userId);
-  if (!sessions) {
-    userSessions.set(userId, new Set([sessionId]));
-    return;
-  }
-  sessions.add(sessionId);
-}
-
-function isSessionOwnedByUser(userId: string, sessionId: string): boolean {
-  return userSessions.get(userId)?.has(sessionId) ?? false;
-}
 
 export async function postChat(
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> {
   try {
-    if (!req.userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+    const { userId, sessionId, message } = req.body as ChatBody;
+    const effectiveUserId = req.userId || userId;
+
+    if (!effectiveUserId || !effectiveUserId.trim()) {
+      res.status(400).json({ error: 'userId is required' });
       return;
     }
-
-    const { sessionId, message } = req.body as ChatBody;
 
     if (!message || !message.trim()) {
       res.status(400).json({ error: 'message is required' });
       return;
     }
 
-    const effectiveSessionId = sessionId?.trim() || createSession();
+    const effectiveSessionId = sessionId?.trim() || (await createSession(effectiveUserId.trim()));
 
-    if (sessionId?.trim() && !isSessionOwnedByUser(req.userId, effectiveSessionId)) {
+    const isOwner = await sessionBelongsToUser(effectiveSessionId, effectiveUserId.trim());
+    if (!isOwner) {
       res.status(403).json({ error: 'Forbidden session access' });
       return;
     }
-
-    attachSessionToUser(req.userId, effectiveSessionId);
 
     const reply = await generateReply(effectiveSessionId, message);
 

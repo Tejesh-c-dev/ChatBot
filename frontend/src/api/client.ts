@@ -46,9 +46,11 @@ export const authAPI = {
 };
 
 export const sessionsAPI = {
-  getAll: () => api.get('/sessions'),
+  getAll: (params?: { cursor?: string; limit?: number }) =>
+    api.get('/sessions', { params }),
   create: (title?: string) => api.post('/sessions', { title }),
-  getOne: (id: string) => api.get(`/sessions/${id}`),
+  getOne: (id: string, params?: { before?: string; limit?: number }) =>
+    api.get(`/sessions/${id}`, { params }),
   delete: (id: string) => api.delete(`/sessions/${id}`),
   rename: (id: string, title: string) => api.patch(`/sessions/${id}`, { title }),
 };
