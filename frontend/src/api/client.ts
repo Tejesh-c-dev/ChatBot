@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 function getValidStoredToken(): string | null {
@@ -40,24 +40,24 @@ api.interceptors.response.use(
 
 export const authAPI = {
   register: (data: { username: string; email: string; password: string }) =>
-    api.post('/auth/register', data),
+    api.post('/api/auth/register', data),
   login: (data: { email: string; password: string }) =>
-    api.post('/auth/login', data),
+    api.post('/api/auth/login', data),
 };
 
 export const sessionsAPI = {
   getAll: (params?: { cursor?: string; limit?: number }) =>
-    api.get('/sessions', { params }),
-  create: (title?: string) => api.post('/sessions', { title }),
+    api.get('/api/sessions', { params }),
+  create: (title?: string) => api.post('/api/sessions', { title }),
   getOne: (id: string, params?: { before?: string; limit?: number }) =>
-    api.get(`/sessions/${id}`, { params }),
-  delete: (id: string) => api.delete(`/sessions/${id}`),
-  rename: (id: string, title: string) => api.patch(`/sessions/${id}`, { title }),
+    api.get(`/api/sessions/${id}`, { params }),
+  delete: (id: string) => api.delete(`/api/sessions/${id}`),
+  rename: (id: string, title: string) => api.patch(`/api/sessions/${id}`, { title }),
 };
 
 export const chatAPI = {
   sendMessage: (sessionId: string, content: string) =>
-    api.post(`/chat/${sessionId}/message`, { content }),
+    api.post(`/api/chat/${sessionId}/message`, { content }),
 };
 
 export default api;
