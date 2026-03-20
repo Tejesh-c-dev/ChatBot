@@ -2,9 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const uuid_1 = require("uuid");
-const auth_1 = require("../middleware/auth");
 const chat_controller_1 = require("../controllers/chat.controller");
 const ai_service_1 = require("../services/ai.service");
+const auth_1 = require("../middleware/auth");
+const chat_service_1 = require("../services/chat.service");
 const router = (0, express_1.Router)();
 router.use(auth_1.authMiddleware);
 // New endpoint: POST /api/chat
@@ -19,6 +20,11 @@ router.post('/:sessionId/message', async (req, res) => {
         const { content } = req.body;
         if (!content?.trim()) {
             res.status(400).json({ error: 'Message content required' });
+            return;
+        }
+        const allowed = await (0, chat_service_1.sessionBelongsToUser)(req.params.sessionId, req.userId);
+        if (!allowed) {
+            res.status(403).json({ error: 'Forbidden session access' });
             return;
         }
         const aiText = await (0, ai_service_1.generateReply)(req.params.sessionId, content.trim());

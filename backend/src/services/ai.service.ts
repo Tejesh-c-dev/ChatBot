@@ -1,12 +1,35 @@
-import { addMessage, getRecentMessages } from '../store/chatStore';
-import { Message } from '../types/message';
+import { addMessage, getRecentMessages } from './chat.service';
+import { MessageRole } from '../types/message';
 
 const SYSTEM_PROMPT =
-  'You are a helpful assistant. Keep context of the conversation.';
+  'You are a helpful assistant that remembers conversation context.';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const PRIMARY_MODEL: string = 'mistralai/mistral-7b-instruct:free';
-const FALLBACK_MODEL: string = 'openrouter/free';
-const HISTORY_LIMIT = 6;
+const DEFAULT_MODELS = ['mistralai/mistral-7b-instruct:free', 'openrouter/auto'];
+const HISTORY_LIMIT = 10;
+
+function buildFallbackReply(userMessage: string): string {
+  const normalized = userMessage.replace(/\s+/g, ' ').trim();
+  const lower = normalized.toLowerCase();
+
+  if (/^(hi|hello|hey|yo)\b/.test(lower)) {
+    return 'Hi! I am running in offline mode right now, but I can still help with short answers and drafting text.';
+  }
+
+  if (lower.includes('about you') || lower.includes('who are you')) {
+    return 'I am your chat assistant for this app. The cloud model is currently unavailable, so I am replying in offline mode for now.';
+  }
+
+  if (lower.includes('help')) {
+    return 'I can still help in offline mode with summaries, rewrites, brainstorming, and simple explanations. Ask in short prompts for best results.';
+  }
+
+  if (lower.endsWith('?')) {
+    return `Short answer: I received your question (${normalized.slice(0, 140)}). I am in offline mode, so please treat this as a temporary response until the provider is reachable.`;
+  }
+
+  const preview = normalized.slice(0, 180);
+  return `Noted: "${preview}". I am running in offline mode right now, but your message was saved and we can continue chatting.`;
+}
 
 interface OpenRouterResponse {
   choices?: Array<{
@@ -38,30 +61,25 @@ export async function generateReply(
   userMessage: string
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is missing');
-  }
-
   const normalizedMessage = userMessage.trim();
+  const fallbackReply = buildFallbackReply(normalizedMessage);
+
   if (!normalizedMessage) {
     throw new Error('Message cannot be empty');
   }
 
-  const userEntry: Message = {
-    role: 'user',
-    content: normalizedMessage,
-    createdAt: new Date().toISOString(),
-  };
-  addMessage(sessionId, userEntry);
+  await addMessage(sessionId, 'user', normalizedMessage);
 
-  const recentMessages = getRecentMessages(sessionId, HISTORY_LIMIT);
-  const contextMessages: Message[] = [
+  const recentMessages = await getRecentMessages(sessionId, HISTORY_LIMIT);
+  const contextMessages: Array<{ role: MessageRole; content: string }> = [
     {
       role: 'system',
       content: SYSTEM_PROMPT,
-      createdAt: new Date().toISOString(),
     },
-    ...recentMessages,
+    ...recentMessages.map((message) => ({
+      role: message.role as MessageRole,
+      content: message.content,
+    })),
   ];
 
   const payloadMessages = contextMessages.map((msg) => ({
@@ -70,6 +88,10 @@ export async function generateReply(
   }));
 
   const callModel = async (model: string): Promise<string> => {
+    if (!apiKey) {
+      return fallbackReply;
+    }
+
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -98,24 +120,33 @@ export async function generateReply(
     return reply;
   };
 
-  let reply: string;
+  const configuredModel = (process.env.OPENROUTER_MODEL || '').trim();
+  const modelsToTry = [configuredModel, ...DEFAULT_MODELS].filter((model, index, arr) => {
+    if (!model) return false;
+    return arr.indexOf(model) === index;
+  });
+
+  let reply = fallbackReply;
   try {
-    reply = await callModel(PRIMARY_MODEL);
-  } catch (primaryError) {
-    if (PRIMARY_MODEL === FALLBACK_MODEL) {
-      throw primaryError;
+    let lastError: unknown = null;
+    for (const model of modelsToTry) {
+      try {
+        reply = await callModel(model);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
     }
 
-    console.warn('Primary model failed, using fallback model:', primaryError);
-    reply = await callModel(FALLBACK_MODEL);
+    if (lastError) {
+      throw lastError;
+    }
+  } catch (error) {
+    console.error('generateReply OpenRouter fallback:', error);
   }
 
-  const assistantEntry: Message = {
-    role: 'assistant',
-    content: reply,
-    createdAt: new Date().toISOString(),
-  };
-  addMessage(sessionId, assistantEntry);
+  await addMessage(sessionId, 'assistant', reply);
 
   return reply;
 }

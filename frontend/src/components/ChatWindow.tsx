@@ -2,15 +2,39 @@ import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import MessageBubble from './MessageBubble';
 
+const SendIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="white" aria-hidden="true">
+    <path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-3-9-3V1.5z" />
+  </svg>
+);
+
+const TypingIndicator = () => (
+  <div className="msg-row">
+    <div className="msg-avatar ai">N</div>
+    <div className="typing">
+      <span className="dot" />
+      <span className="dot" />
+      <span className="dot" />
+    </div>
+  </div>
+);
+
 export default function ChatWindow() {
-  const { activeSession, isSending, sendMessage, createSession } = useStore();
+  const { activeSession, isSending, sendMessage, createSession, loadOlderMessages, messageHasMore } = useStore();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const lastAssistantMessage = [...(activeSession?.messages ?? [])]
+    .reverse()
+    .find((message) => message.role === 'assistant');
+  const isOfflineMode =
+    (lastAssistantMessage?.content || '').toLowerCase().includes('offline mode') ||
+    (lastAssistantMessage?.content || '').toLowerCase().includes('provider is unreachable');
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeSession?.messages]);
+  }, [activeSession?.messages, isSending]);
 
   const handleSend = async () => {
     const msg = input.trim();
@@ -30,220 +54,82 @@ export default function ChatWindow() {
   const autoResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = 'auto';
-    e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
-  };
-
-  const s: Record<string, React.CSSProperties> = {
-    window: {
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      overflow: 'hidden',
-      background: 'var(--bg)',
-    },
-    topBar: {
-      padding: '14px 24px',
-      borderBottom: '1px solid var(--border)',
-      background: 'var(--surface)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-    },
-    sessionTitle: {
-      fontSize: 15,
-      fontWeight: 600,
-      color: 'var(--text)',
-    },
-    msgCount: {
-      fontSize: 11,
-      color: 'var(--text3)',
-      background: 'var(--surface2)',
-      border: '1px solid var(--border)',
-      borderRadius: 20,
-      padding: '2px 8px',
-    },
-    messages: {
-      flex: 1,
-      overflowY: 'auto' as const,
-      padding: '24px 0 8px',
-    },
-    empty: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      gap: 12,
-      color: 'var(--text3)',
-    },
-    emptyIcon: {
-      fontSize: 40,
-      opacity: 0.4,
-    },
-    emptyTitle: {
-      fontSize: 18,
-      fontWeight: 600,
-      color: 'var(--text2)',
-    },
-    emptyText: {
-      fontSize: 13,
-      color: 'var(--text3)',
-      textAlign: 'center' as const,
-    },
-    startBtn: {
-      marginTop: 8,
-      padding: '10px 20px',
-      background: 'var(--accent)',
-      color: 'white',
-      border: 'none',
-      borderRadius: 8,
-      cursor: 'pointer',
-      fontSize: 13,
-      fontWeight: 600,
-      fontFamily: 'var(--font-body)',
-    },
-    inputArea: {
-      padding: '12px 20px 16px',
-      borderTop: '1px solid var(--border)',
-      background: 'var(--surface)',
-    },
-    inputRow: {
-      display: 'flex',
-      alignItems: 'flex-end',
-      gap: 10,
-      background: 'var(--surface2)',
-      border: '1px solid var(--border)',
-      borderRadius: 12,
-      padding: '8px 8px 8px 14px',
-    },
-    textarea: {
-      flex: 1,
-      background: 'none',
-      border: 'none',
-      color: 'var(--text)',
-      fontSize: 14,
-      fontFamily: 'var(--font-body)',
-      lineHeight: 1.5,
-      resize: 'none' as const,
-      outline: 'none',
-      minHeight: 24,
-      maxHeight: 140,
-      overflowY: 'auto' as const,
-    },
-    sendBtn: {
-      width: 36,
-      height: 36,
-      background: 'var(--accent)',
-      border: 'none',
-      borderRadius: 8,
-      color: 'white',
-      cursor: 'pointer',
-      fontSize: 16,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-      opacity: input.trim() && !isSending ? 1 : 0.4,
-      transition: 'opacity 0.15s',
-    },
-    hint: {
-      fontSize: 11,
-      color: 'var(--text3)',
-      marginTop: 6,
-      paddingLeft: 2,
-    },
-    typing: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6,
-      padding: '4px 24px 8px',
-      color: 'var(--text3)',
-      fontSize: 12,
-    },
-    dot: {
-      width: 6,
-      height: 6,
-      background: 'var(--accent)',
-      borderRadius: '50%',
-      animation: 'pulse 1.2s ease-in-out infinite',
-    },
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
   };
 
   return (
-    <div style={s.window}>
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; transform: scale(0.8); }
-          50% { opacity: 1; transform: scale(1); }
-        }
-        .dot2 { animation-delay: 0.2s !important; }
-        .dot3 { animation-delay: 0.4s !important; }
-      `}</style>
-
-      {!activeSession ? (
-        <div style={s.empty}>
-          <div style={s.emptyIcon}>✦</div>
-          <div style={s.emptyTitle}>NexusChat</div>
-          <div style={s.emptyText}>
-            Select a chat from the sidebar<br />or start a new conversation
-          </div>
-          <button style={s.startBtn} onClick={() => createSession()}>
-            Start New Chat
-          </button>
+    <main className="app-chat">
+      <div className="chat-topbar">
+        <div>
+          <div className="topbar-title">{activeSession?.title ?? 'Chat'}</div>
+          <div className="topbar-meta">{activeSession?.messages.length ?? 0} messages</div>
         </div>
-      ) : (
-        <>
-          <div style={s.topBar}>
-            <div style={s.sessionTitle}>{activeSession.title}</div>
-            <div style={s.msgCount}>{activeSession.messages.length} messages</div>
+        <div className="topbar-actions">
+          <button className="icon-btn" title="Share" type="button">S</button>
+          <button className="icon-btn" title="More" type="button">M</button>
+        </div>
+      </div>
+
+      <div className="messages">
+        {!activeSession ? (
+          <div className="empty-state">
+            <div className="empty-icon">N</div>
+            <p className="empty-title">How can I help you today?</p>
+            <p className="empty-sub">Select a chat from the sidebar or start a new one.</p>
+            <button className="new-chat-btn" onClick={() => createSession()}>
+              + Start new chat
+            </button>
           </div>
-
-          <div style={s.messages}>
-            {activeSession.messages.length === 0 ? (
-              <div style={{ ...s.empty, paddingTop: 60 }}>
-                <div style={s.emptyIcon}>💬</div>
-                <div style={{ color: 'var(--text3)', fontSize: 14 }}>
-                  Send a message to start the conversation
-                </div>
-              </div>
-            ) : (
-              activeSession.messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))
-            )}
-
-            {isSending && (
-              <div style={s.typing}>
-                <span style={{ color: 'var(--text3)' }}>✦ Thinking</span>
-                <div style={s.dot} />
-                <div style={{ ...s.dot, animationDelay: '0.2s' }} />
-                <div style={{ ...s.dot, animationDelay: '0.4s' }} />
+        ) : (
+          <>
+            {messageHasMore && (
+              <div className="message-load">
+                <button onClick={loadOlderMessages}>Load older messages</button>
               </div>
             )}
+
+            {activeSession.messages.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-icon">N</div>
+                <p className="empty-title">How can I help you today?</p>
+                <p className="empty-sub">Type a message to get started.</p>
+              </div>
+            )}
+
+            {activeSession.messages.map((msg) => (
+              <MessageBubble key={msg.id} message={msg} />
+            ))}
+
+            {isSending && <TypingIndicator />}
+
+            {isOfflineMode && <div className="thinking">Offline mode active</div>}
             <div ref={bottomRef} />
-          </div>
+          </>
+        )}
+      </div>
 
-          <div style={s.inputArea}>
-            <div style={s.inputRow}>
-              <textarea
-                ref={textareaRef}
-                style={s.textarea}
-                value={input}
-                onChange={autoResize}
-                onKeyDown={handleKey}
-                placeholder="Message NexusChat…"
-                rows={1}
-                disabled={isSending}
-              />
-              <button style={s.sendBtn} onClick={handleSend} disabled={!input.trim() || isSending}>
-                ↑
-              </button>
-            </div>
-            <div style={s.hint}>Enter to send · Shift+Enter for new line</div>
-          </div>
-        </>
-      )}
-    </div>
+      <div className="input-area">
+        <div className="input-wrap">
+                <textarea
+                  ref={textareaRef}
+                  className="msg-input"
+                  value={input}
+                  onChange={autoResize}
+                  onKeyDown={handleKey}
+                  placeholder={isOfflineMode ? 'Message NexusChat (offline mode)...' : 'Message NexusChat...'}
+                  rows={1}
+                  disabled={isSending || !activeSession}
+                />
+                <button
+                  className="send-btn"
+                  onClick={handleSend}
+                  disabled={!input.trim() || isSending || !activeSession}
+                >
+                  <SendIcon />
+                </button>
+        </div>
+        <p className="input-hint">NexusChat can make mistakes. Double-check important info.</p>
+      </div>
+    </main>
   );
 }

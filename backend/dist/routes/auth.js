@@ -6,8 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const uuid_1 = require("uuid");
-const types_1 = require("../models/types");
+const prisma_service_1 = require("../services/prisma.service");
 const router = (0, express_1.Router)();
 // Register
 router.post('/register', async (req, res) => {
@@ -17,25 +16,32 @@ router.post('/register', async (req, res) => {
             res.status(400).json({ error: 'All fields required' });
             return;
         }
-        // Check if email exists
-        const existingUser = Array.from(types_1.users.values()).find((u) => u.email === email);
+        const normalizedEmail = String(email).trim().toLowerCase();
+        const existingUser = await prisma_service_1.prisma.user.findUnique({
+            where: { email: normalizedEmail },
+            select: { id: true },
+        });
         if (existingUser) {
             res.status(409).json({ error: 'Email already registered' });
             return;
         }
         const passwordHash = await bcryptjs_1.default.hash(password, 10);
-        const user = {
-            id: (0, uuid_1.v4)(),
-            username,
-            email,
-            passwordHash,
-            createdAt: new Date(),
-        };
-        types_1.users.set(user.id, user);
+        const user = await prisma_service_1.prisma.user.create({
+            data: {
+                username: String(username).trim(),
+                email: normalizedEmail,
+                passwordHash,
+            },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+            },
+        });
         const token = jsonwebtoken_1.default.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
         res.status(201).json({
             token,
-            user: { id: user.id, username: user.username, email: user.email },
+            user,
         });
     }
     catch (_err) {
@@ -50,7 +56,16 @@ router.post('/login', async (req, res) => {
             res.status(400).json({ error: 'Email and password required' });
             return;
         }
-        const user = Array.from(types_1.users.values()).find((u) => u.email === email);
+        const normalizedEmail = String(email).trim().toLowerCase();
+        const user = await prisma_service_1.prisma.user.findUnique({
+            where: { email: normalizedEmail },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                passwordHash: true,
+            },
+        });
         if (!user) {
             res.status(401).json({ error: 'Invalid credentials' });
             return;

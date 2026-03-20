@@ -1,12 +1,29 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateReply = generateReply;
-const chatStore_1 = require("../store/chatStore");
-const SYSTEM_PROMPT = 'You are a helpful assistant. Keep context of the conversation.';
+const chat_service_1 = require("./chat.service");
+const SYSTEM_PROMPT = 'You are a helpful assistant that remembers conversation context.';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const PRIMARY_MODEL = 'mistralai/mistral-7b-instruct:free';
-const FALLBACK_MODEL = 'openrouter/free';
-const HISTORY_LIMIT = 6;
+const DEFAULT_MODELS = ['mistralai/mistral-7b-instruct:free', 'openrouter/auto'];
+const HISTORY_LIMIT = 10;
+function buildFallbackReply(userMessage) {
+    const normalized = userMessage.replace(/\s+/g, ' ').trim();
+    const lower = normalized.toLowerCase();
+    if (/^(hi|hello|hey|yo)\b/.test(lower)) {
+        return 'Hi! I am running in offline mode right now, but I can still help with short answers and drafting text.';
+    }
+    if (lower.includes('about you') || lower.includes('who are you')) {
+        return 'I am your chat assistant for this app. The cloud model is currently unavailable, so I am replying in offline mode for now.';
+    }
+    if (lower.includes('help')) {
+        return 'I can still help in offline mode with summaries, rewrites, brainstorming, and simple explanations. Ask in short prompts for best results.';
+    }
+    if (lower.endsWith('?')) {
+        return `Short answer: I received your question (${normalized.slice(0, 140)}). I am in offline mode, so please treat this as a temporary response until the provider is reachable.`;
+    }
+    const preview = normalized.slice(0, 180);
+    return `Noted: "${preview}". I am running in offline mode right now, but your message was saved and we can continue chatting.`;
+}
 function extractAssistantReply(content) {
     if (typeof content === 'string') {
         return content.trim();
@@ -21,33 +38,31 @@ function extractAssistantReply(content) {
 }
 async function generateReply(sessionId, userMessage) {
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
-        throw new Error('OPENROUTER_API_KEY is missing');
-    }
     const normalizedMessage = userMessage.trim();
+    const fallbackReply = buildFallbackReply(normalizedMessage);
     if (!normalizedMessage) {
         throw new Error('Message cannot be empty');
     }
-    const userEntry = {
-        role: 'user',
-        content: normalizedMessage,
-        createdAt: new Date().toISOString(),
-    };
-    (0, chatStore_1.addMessage)(sessionId, userEntry);
-    const recentMessages = (0, chatStore_1.getRecentMessages)(sessionId, HISTORY_LIMIT);
+    await (0, chat_service_1.addMessage)(sessionId, 'user', normalizedMessage);
+    const recentMessages = await (0, chat_service_1.getRecentMessages)(sessionId, HISTORY_LIMIT);
     const contextMessages = [
         {
             role: 'system',
             content: SYSTEM_PROMPT,
-            createdAt: new Date().toISOString(),
         },
-        ...recentMessages,
+        ...recentMessages.map((message) => ({
+            role: message.role,
+            content: message.content,
+        })),
     ];
     const payloadMessages = contextMessages.map((msg) => ({
         role: msg.role,
         content: msg.content,
     }));
     const callModel = async (model) => {
+        if (!apiKey) {
+            return fallbackReply;
+        }
         const response = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: {
@@ -70,22 +85,32 @@ async function generateReply(sessionId, userMessage) {
         }
         return reply;
     };
-    let reply;
+    const configuredModel = (process.env.OPENROUTER_MODEL || '').trim();
+    const modelsToTry = [configuredModel, ...DEFAULT_MODELS].filter((model, index, arr) => {
+        if (!model)
+            return false;
+        return arr.indexOf(model) === index;
+    });
+    let reply = fallbackReply;
     try {
-        reply = await callModel(PRIMARY_MODEL);
-    }
-    catch (primaryError) {
-        if (PRIMARY_MODEL === FALLBACK_MODEL) {
-            throw primaryError;
+        let lastError = null;
+        for (const model of modelsToTry) {
+            try {
+                reply = await callModel(model);
+                lastError = null;
+                break;
+            }
+            catch (error) {
+                lastError = error;
+            }
         }
-        console.warn('Primary model failed, using fallback model:', primaryError);
-        reply = await callModel(FALLBACK_MODEL);
+        if (lastError) {
+            throw lastError;
+        }
     }
-    const assistantEntry = {
-        role: 'assistant',
-        content: reply,
-        createdAt: new Date().toISOString(),
-    };
-    (0, chatStore_1.addMessage)(sessionId, assistantEntry);
+    catch (error) {
+        console.error('generateReply OpenRouter fallback:', error);
+    }
+    await (0, chat_service_1.addMessage)(sessionId, 'assistant', reply);
     return reply;
 }
