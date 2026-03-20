@@ -20,6 +20,18 @@ export interface ChatSession {
   lastMessage: string;
 }
 
+export interface SessionPageInfo {
+  hasMore: boolean;
+  nextBefore: string | null;
+}
+
 export interface ChatSessionDetail extends ChatSession {
   messages: Message[];
+  pageInfo?: SessionPageInfo;
+}
+
+export interface SessionsListResponse {
+  items: ChatSession[];
+  hasMore: boolean;
+  nextCursor: string | null;
 }
