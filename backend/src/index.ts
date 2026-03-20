@@ -20,7 +20,9 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/chat', chatRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
-
+app.get("/", (req, res) => {
+  res.send("API running 🚀");
+});
 let server: Server;
 server = app
   .listen(BASE_PORT, () => {
